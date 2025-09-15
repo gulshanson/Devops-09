@@ -1,0 +1,112 @@
+Project: Node.js/Express + MongoDB in containers
+Date: 15/09/2025
+Author: Gulshan Soni
+
+Summary of risks identified
+
+Image supply-chain & build-time risks
+
+Use of untrusted/mutable base images may contain CVEs or malware.
+
+Secrets accidentally baked into images (e.g., .env) risk credential leakage.
+
+CI/CD risks
+
+No automated scanning allows vulnerable dependencies or misconfigurations into production.
+
+Excessive CI permissions might allow wider access than needed.
+
+Runtime risks
+
+Containers running as root or with elevated capabilities increase attack surface.
+
+Lateral-network access from app pods to DB or external services if network policies are absent.
+
+Secrets & configuration
+
+Storing plaintext secrets in repo or image risks compromise.
+
+Kubernetes secrets unencrypted at rest are vulnerable if cluster is breached.
+
+Infrastructure as code
+
+Misconfigured IAM, open S3 buckets, or overly permissive policies may be created by IaC.
+
+What was implemented and why
+Docker hardening
+
+Multi-stage Dockerfile to separate build artifacts and runtime image, drastically reducing layer size and removing build tools from final image.
+
+Non-root appuser is created and used (USER appuser) to eliminate root-run-time risk.
+
+.dockerignore excludes sensitive and large files.
+
+Image scanning (Trivy) and Dockerfile best-practice checks (Dockle) are used to detect CVEs and configuration issues early in pipeline.
+
+Why: reduces attack surface, prevents secrets leakage into image layers, enforces least privilege at container level.
+
+CI/CD pipeline
+
+GitHub Actions pipeline integrates Semgrep for static analysis, Trivy for container scanning, and cosign for image signing. The pipeline fails on HIGH/CRITICAL findings and only pushes signed images to ECR.
+
+Tests and npm audit run before build to stop vulnerable code from being packaged.
+
+Why: ensures only vetted, signed artifacts move forward — securing the build → deploy supply chain.
+
+Secrets Management
+
+Demonstrated approach using AWS Secrets Manager (IRSA for EKS) and ExternalSecrets to sync secrets into the cluster only as required.
+
+Kubernetes native secrets used only with encryption at rest and limited scope.
+
+Why: prevents credentials from being committed and ensures controlled, auditable access.
+
+Infrastructure hardening
+
+Example Terraform for ECR and least-privilege IAM policies.
+
+Enforced IaC scanning via tfsec / checkov to detect insecure configurations like public S3, open security groups, or overly broad IAM roles.
+
+Why: to detect misconfigurations before infra is provisioned and to keep permissions minimal.
+
+Runtime protections (bonus)
+
+Falco for syscall-level runtime detection and alerting.
+
+Pod securityContext with readOnlyRootFilesystem, allowPrivilegeEscalation:false, drop: ["ALL"], and runAsNonRoot:true.
+
+Recommend enforcing seccomp/AppArmor profiles and PodSecurity admission restricted.
+
+Why: early detection of runtime anomalies and enforce strict runtime behavior to limit impact of compromise.
+
+Suggestions for production-grade hardening
+
+Adopt a full supply-chain security posture
+
+Use SBOM (Software Bill of Materials) for every image; store and monitor SBOMs (CycloneDX, SPDX).
+
+Enforce signed images and attestation (cosign + in-cluster admission checks).
+
+Centralized secrets & rotation
+
+Use managed secrets stores (AWS Secrets Manager or HashiCorp Vault) + automatic rotation for DB credentials and keys.
+
+Network & segmentation
+
+Apply default-deny NetworkPolicies per namespace and explicit allow lists for required flows.
+
+Monitoring & incident response
+
+Centralized logging (ELK/CloudWatch), metrics (Prometheus), and runtime alerts; documented playbooks for incidents.
+
+Zero-trust & least privilege
+
+Use IRSA and service accounts per microservice with least privilege to access AWS resources.
+
+Automated compliance & pentest
+
+Schedule regular SCA and pentesting; run chaos experiments and restore-drills for backups.
+
+Operator-level enforcement
+
+Use OPA/Gatekeeper or Kyverno to wrap policy enforcement: image provenance, resource quotas, and deny of privileged containers.
