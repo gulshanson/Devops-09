@@ -1,0 +1,50 @@
+# providers and backend omitted for brevity
+resource "aws_ecr_repository" "myapp" {
+  name = "myapp"
+  image_tag_mutability = "IMMUTABLE"
+  tags = { env = "prod" }
+}
+
+# Example IAM role policy for CI to push image to ECR (least privilege)
+data "aws_iam_policy_document" "ecr_push" {
+  statement {
+    actions = [
+      "ecr:GetAuthorizationToken"
+    ]
+    resources = ["*"]
+  }
+  statement {
+    actions = [
+      "ecr:BatchCheckLayerAvailability",
+      "ecr:CompleteLayerUpload",
+      "ecr:GetRepositoryPolicy",
+      "ecr:InitiateLayerUpload",
+      "ecr:PutImage",
+      "ecr:UploadLayerPart"
+    ]
+    resources = [aws_ecr_repository.myapp.arn]
+  }
+}
+resource "aws_iam_policy" "ci_ecr_push" {
+  name = "ci-ecr-push"
+  policy = data.aws_iam_policy_document.ecr_push.json
+}
+
+
+
+---------------------------------------------------------------------
+
+
+IaC scanning
+
+Run tfsec / checkov in CI:
+
+# tfsec
+tfsec .
+
+# checkov
+checkov -d .
+
+
+Fail the pipeline if tfsec finds HIGH/CRITICAL results (use exit code behavior or parse output).
+
