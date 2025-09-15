@@ -1,0 +1,38 @@
+Install Trivy / Dockle locally or in CI.
+
+Scan image (after building locally):
+
+
+# Build (use an immutable tag in CI)
+docker build -t myapp:local .
+
+# Run trivy filesystem scan for Dockerfile & files
+trivy fs .
+
+# Or scan the image
+trivy image --exit-code 1 --severity CRITICAL,HIGH myapp:local
+# exit code 1 will fail CI if any HIGH/CRITICAL found.
+
+# Dockle for Dockerfile best-practices
+dockle -f json -o dockle-report.json myapp:local
+
+
+How to interpret & fix common high/critical findings
+
+Critical: Running as root → Fix: add non-root user + USER appuser (done above).
+
+High: Sensitive files in image (e.g., .env) → Fix: add to .dockerignore, remove from image history; rotate secrets if they were added previously.
+
+High: Outdated base image CVEs → Fix: pin to a recent digest or upgrade to newer base (e.g., use node:18-alpine@sha256:<digest>), re-scan until CVEs addressed.
+
+High: Unnecessary packages (apk adds) → Fix: remove build-time tools in final stage and use multi-stage builds (we do).
+
+High: Exposed secrets in ENV → Fix: do not set sensitive values in Dockerfile ENV — pass via runtime secrets.
+
+If Trivy returns a CVE, it will show a package and a remediation (usually upgrade package or base). Example remediation steps:
+
+Update Dockerfile base to newer node:18-alpine digest.
+
+Rebuild and rescan.
+
+If CVE persists in dependency, update package.json to a patched version and npm ci, rebuild.
