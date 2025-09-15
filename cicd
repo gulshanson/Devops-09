@@ -1,0 +1,97 @@
+This pipeline have:
+
+runs lint/test
+
+runs Semgrep (or SonarCloud) for static checks
+
+builds image
+
+runs Trivy image scan and fails on HIGH/CRITICAL
+
+signs image using cosign
+
+pushes to ECR only if checks passed
+
+
+# .github/workflows/ci-cd-secure.yaml
+
+
+name: CI - Build & Secure Publish
+
+on:
+  push:
+    branches: [ main ]
+  pull_request:
+    branches: [ main ]
+
+env:
+  IMAGE_REPO: 123456789012.dkr.ecr.us-east-1.amazonaws.com/myapp
+
+jobs:
+  checks:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Setup Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: 18
+
+      - name: Install deps & Run tests
+        run: |
+          npm ci
+          npm test
+          npm audit --audit-level=moderate
+
+      - name: Semgrep scan
+        uses: returntocorp/semgrep-action@v1
+        with:
+          config: 'p/ci' # adjust or use your ruleset
+          sarif: true
+
+      - name: Build Docker image
+        run: |
+          IMAGE="${{ env.IMAGE_REPO }}:${{ github.sha }}"
+          docker build -t $IMAGE .
+          echo "IMAGE=$IMAGE" >> $GITHUB_ENV
+
+      - name: Login to ECR
+        uses: aws-actions/amazon-ecr-login@v2
+        with:
+          region: us-east-1
+
+      - name: Trivy scan image (fail on HIGH/CRITICAL)
+        uses: aquasecurity/trivy-action@v2
+        with:
+          image-ref: ${{ env.IMAGE }} 
+          exit-code: '1'
+          severity: 'CRITICAL,HIGH'
+          scan-type: 'image'
+
+      - name: Sign image (cosign)
+        env:
+          COSIGN_KEY: ${{ secrets.COSIGN_KEY }}
+        run: |
+          echo "${COSIGN_KEY}" > cosign.key
+          cosign sign --key cosign.key "${{ env.IMAGE }}"
+
+      - name: Push image to ECR
+        run: |
+          docker push "${{ env.IMAGE }}"
+
+      - name: Deploy to cluster (only from main)
+        if: github.ref == 'refs/heads/main'
+        run: |
+          # use helm/kubectl to deploy with image tag=${{ github.sha }}
+          echo "deploy step - replace with your helm/kubectl commands"
+
+
+
+#Use GitHub Secrets for AWS credentials, COSIGN keys etc.
+
+#trivy-action exit-code setting ensures the job fails for HIGH/CRITICAL findings.
+
+#Semgrep rules should include your custom checks (e.g., no hardcoded secrets, dangerous API usage).
+
+#Consider adding image scanning earlier: static analysis on Dockerfile (trivy fs .) before building.
