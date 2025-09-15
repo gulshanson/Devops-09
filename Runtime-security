@@ -1,0 +1,14 @@
+Runtime Security (optional / bonus)
+
+ Falco (runtime threat detection)
+
+Falco watches system calls and alerts on suspicious behavior (exec in container, unexpected network connections).
+
+Install Falco via Helm in cluster (example):
+
+helm repo add falcosecurity https://falcosecurity.github.io/charts
+helm repo update
+helm install falco falcosecurity/falco --namespace falco --create-namespace
+
+
+Add rules tuned to your app (e.g., detect shell exec in app container). Configure alert sinks (Slack, PagerDuty).
